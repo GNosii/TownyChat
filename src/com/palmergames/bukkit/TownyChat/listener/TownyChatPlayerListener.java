@@ -9,11 +9,12 @@ import com.palmergames.bukkit.TownyChat.config.ChatSettings;
 import com.palmergames.bukkit.TownyChat.tasks.onPlayerJoinTask;
 import com.palmergames.bukkit.towny.Towny;
 import com.palmergames.bukkit.towny.TownyMessaging;
-import com.palmergames.bukkit.towny.exceptions.NotRegisteredException;
 import com.palmergames.bukkit.towny.exceptions.TownyException;
 import com.palmergames.bukkit.towny.object.Resident;
 import com.palmergames.bukkit.towny.object.Translation;
 import com.palmergames.bukkit.towny.TownyUniverse;
+
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -36,33 +37,30 @@ public class TownyChatPlayerListener implements Listener  {
 
 	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerJoin(final PlayerJoinEvent event) {
-		Player player = event.getPlayer();
-		String name = player.getName();
+		
+		Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> loginPlayer(event.getPlayer()), 1l);
+
+	}
+
+	private void loginPlayer(Player player) {
 		for (Channel channel : plugin.getChannelsHandler().getAllChannels().values()) {
-			// If the channel is auto join, they will be added
-			// If the channel is not auto join, they will marked as absent
-			// TODO: Only do this for channels the user has permissions for
-			channel.forgetPlayer(name);
+			channel.forgetPlayer(player);
 		}
+
 		Channel channel = plugin.getChannelsHandler().getDefaultChannel();
-		if (channel != null) {
-			// See if we have permissions for the default channel
-			channel = plugin.getChannelsHandler().getChannel(player, channel.getCommands().get(0));
-			if (channel != null) {
-				// Schedule it as delayed task because Towny may not have processed this just yet
-				// and would reset the mode otherwise
-				plugin.getServer().getScheduler().scheduleSyncDelayedTask(plugin, new onPlayerJoinTask(plugin, player, channel), 5);
-			}
+		if (channel != null &&  player.hasPermission(channel.getPermission())) {
+			// Schedule it as delayed task because Towny may not have processed this just yet
+			// and would reset the mode otherwise
+			plugin.getServer().getScheduler().scheduleSyncDelayedTask(plugin, new onPlayerJoinTask(plugin, player, channel), 5);
 		}
 	}
 
 	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerQuit(final PlayerQuitEvent event) {
-		String name = event.getPlayer().getName(); 
 		for (Channel channel : plugin.getChannelsHandler().getAllChannels().values()) {
 			// If the channel is auto join, they will be added
 			// If the channel is not auto join, they will marked as absent
-			channel.forgetPlayer(name);
+			channel.forgetPlayer(event.getPlayer());
 		}
 	}
 	
@@ -185,21 +183,15 @@ public class TownyChatPlayerListener implements Listener  {
 		 * We found no channels available so modify the chat (if enabled) and exit.
 		 */
 		if (ChatSettings.isModify_chat()) {
-			try {
-				event.setFormat(ChatSettings.getRelevantFormatGroup(player).getGLOBAL().replace("{channelTag}", "").replace("{msgcolour}", ""));
-				Resident resident = TownyUniverse.getInstance().getDataSource().getResident(player.getName());
+			event.setFormat(ChatSettings.getRelevantFormatGroup(player).getGLOBAL().replace("{channelTag}", "").replace("{msgcolour}", ""));
+			Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId()); 
 
-				LocalTownyChatEvent chatEvent = new LocalTownyChatEvent(event, resident);
+			LocalTownyChatEvent chatEvent = new LocalTownyChatEvent(event, resident);
 
-				if (Towny.is116Plus()) {
-					event.setFormat(HexFormatter.translateHexColors(TownyChatFormatter.getChatFormat(chatEvent)));
-				} else {
-					event.setFormat(TownyChatFormatter.getChatFormat(chatEvent));
-				}
-
-			} catch (NotRegisteredException e) {
-				// World or resident not registered with Towny
-				e.printStackTrace();
+			if (Towny.is116Plus()) {
+				event.setFormat(HexFormatter.translateHexColors(TownyChatFormatter.getChatFormat(chatEvent)));
+			} else {
+				event.setFormat(TownyChatFormatter.getChatFormat(chatEvent));
 			}
 		}
 	}

@@ -10,7 +10,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 
 import com.palmergames.bukkit.towny.TownyMessaging;
+import com.palmergames.bukkit.towny.TownyUniverse;
+import com.palmergames.bukkit.towny.object.Resident;
 import com.palmergames.bukkit.towny.object.Translation;
+import com.palmergames.bukkit.towny.object.metadata.CustomDataField;
+import com.palmergames.bukkit.towny.object.metadata.StringDataField;
 
 public abstract class Channel {
 	
@@ -120,33 +124,40 @@ public abstract class Channel {
 	/*
 	 * Used to reset channel settings for a given player
 	 */
-	public void forgetPlayer(String name) {
-		// If the channel is auto join, they will be added
-		// If the channel is not auto join, they will marked as absent
-		if (autojoin) {
-			join(name);
-		} else {
-			leave(name);
-		}
+	public void forgetPlayer(Player player) {
+
+		if (playerIgnoringThisChannel(player)
+			|| !player.hasPermission(getPermission())
+			|| !autojoin)
+			leave(player);
+		else
+			join(player);
 	}
-	
+
 	/*
 	 * Mark a player as having left chat
 	 */
-	public boolean leave(String name) {
+	public boolean leave(Player player) {
 		if (absentPlayers == null) {
 			absentPlayers = new ConcurrentHashMap<String, Integer> ();
 		}
-		Integer res = absentPlayers.put(name, 1);
+		Integer res = absentPlayers.put(player.getName(), 1);
+		
+		// If the player could see this channel if they wanted to, 
+		// we know they are ignoring the channel by choice.
+		if (player.hasPermission(getPermission()) && !playerIgnoringThisChannel(player))
+			playerAddIgnoreMeta(player);
+		
 		return (res == null || res == 0);
 	}
 	
 	/*
 	 * Mark a player has having joined the chat
 	 */
-	public boolean join(String name) {
+	public boolean join(Player player) {
 		if (absentPlayers == null) return false;
-		Integer res = absentPlayers.remove(name);
+		Integer res = absentPlayers.remove(player.getName());
+		playerRemoveIgnoreMeta(player);
 		return (res != null && res == 1);
 	}
 	
@@ -274,5 +285,67 @@ public abstract class Channel {
 		}
 		return false;
 	}
+
+	private void playerAddIgnoreMeta(Player player) {
+		StringDataField icdf = new StringDataField("townychat_ignoredChannels", "", "Ignored TownyChat Channels");
+		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId()); 
+		if (resident == null)
+			return;
+
+		if (resident.hasMeta(icdf.getKey())) {
+			CustomDataField<?> cdf = resident.getMetadata(icdf.getKey());
+			if (cdf instanceof StringDataField) {
+				StringDataField sdf = (StringDataField) cdf;
+				sdf.setValue(sdf.getValue().concat("\uFF0C " + this.getName()));
+				TownyUniverse.getInstance().getDataSource().saveResident(resident);
+			}
+
+		} else {
+			resident.addMetaData(new StringDataField("townychat_ignoredChannels", this.getName(), "Ignored TownyChat Channels"));
+		}
+	}
 	
+	private void playerRemoveIgnoreMeta(Player player) {
+		StringDataField icdf = new StringDataField("townychat_ignoredChannels", "", "Ignored TownyChat Channels");
+		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId()); 
+		if (resident == null || !resident.hasMeta(icdf.getKey()))
+			return;
+
+		CustomDataField<?> cdf = resident.getMetadata(icdf.getKey());
+		if (cdf instanceof StringDataField) {
+			StringDataField sdf = (StringDataField) cdf;
+			String newValues = "";
+			String[] values = sdf.getValue().split("\uFF0C ");
+			for (String chanName : values)
+				if (!chanName.equalsIgnoreCase(this.getName()))
+					if (newValues.isEmpty())
+						newValues = chanName;
+					else 
+						newValues += "\uFF0C " + chanName;
+
+			if (!newValues.isEmpty()) {
+				sdf.setValue(newValues);
+				TownyUniverse.getInstance().getDataSource().saveResident(resident);
+			} else {
+				resident.removeMetaData(icdf);
+			}
+		}
+		
+	}
+
+	private boolean playerIgnoringThisChannel(Player player) {
+		StringDataField idf = new StringDataField("townychat_ignoredChannels", "", "Ignored TownyChat Channels");
+		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId()); 
+		if (resident != null && resident.hasMeta(idf.getKey())) {
+			CustomDataField<?> cdf = resident.getMetadata(idf.getKey());
+			if (cdf instanceof StringDataField) {
+				StringDataField sdf = (StringDataField) cdf;
+				String[] split = sdf.getValue().split("\uFF0C ");
+				for (String string : split)
+					if (string.equalsIgnoreCase(this.getName()))
+						return true;
+			}
+		}
+		return false;
+	}
 }

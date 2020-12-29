@@ -349,3 +349,19 @@ v0.82:
 v0.83:
   - Fix townychat.spam.bypass doing the opposite of its job.
   - Fix spam countdown resetting if you speak too early.
+v0.84:
+  - Fix nation and town names not parsing out the _'s for spaces.
+    - Closes https://github.com/TownyAdvanced/Towny/issues/4489.
+  - Allow hex colour codes to be used in the messagecolour options channels.yml.
+    - Closes https://github.com/TownyAdvanced/Towny/issues/4087.
+  - Implemented PlayerJoinChatChannelEvent, courtesy of Glare with PR #32.
+    - Closes https://github.com/TownyAdvanced/Towny/issues/4575.
+  - Add persistant leaving for channels.
+    - Uses Towny resident metadata, you will be able to see ignored channels on your /res status screen.
+    - Normal joining/leaving commands are used just like before.
+    - Closes https://github.com/TownyAdvanced/Towny/issues/3133.
+  - Bump minimum Towny version to 0.96.3.0.
+v0.85:
+  - Bump minimum Towny version to 0.96.5.5.
+  - Fix permission tests being done too early on PlayerJoin.
+    - Closes https://github.com/TownyAdvanced/Towny/issues/4615

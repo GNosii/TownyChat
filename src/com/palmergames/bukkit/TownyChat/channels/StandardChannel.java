@@ -6,6 +6,7 @@ import com.palmergames.bukkit.TownyChat.HexFormatter;
 import com.palmergames.bukkit.TownyChat.TownyChatFormatter;
 import com.palmergames.bukkit.TownyChat.config.ChatSettings;
 import com.palmergames.bukkit.TownyChat.events.AsyncChatHookEvent;
+import com.palmergames.bukkit.TownyChat.events.PlayerJoinChatChannelEvent;
 import com.palmergames.bukkit.TownyChat.listener.LocalTownyChatEvent;
 import com.palmergames.bukkit.towny.Towny;
 import com.palmergames.bukkit.towny.TownyAPI;
@@ -25,6 +26,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.dynmap.DynmapAPI;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -47,13 +49,14 @@ public class StandardChannel extends Channel {
 		
 		Player player = event.getPlayer();
 		Set<Player> recipients = null;
-		Resident resident = null;
+		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId());
+		if (resident == null)
+			return;
 		Town town = null;
 		Nation nation = null;
 		String Format = "";
 		
 		try {
-			resident = TownyUniverse.getInstance().getDataSource().getResident(player.getName());
 			town = resident.getTown();
 			nation = resident.getTown().getNation();
 		} catch (NotRegisteredException e1) {
@@ -64,8 +67,9 @@ public class StandardChannel extends Channel {
 		// If player sends a message to a channel it had left
 		// tell the channel to add the player back
 		if (isAbsent(player.getName())) {
-			join(player.getName());
+			join(player);
 			notifyjoin = true;
+			Bukkit.getPluginManager().callEvent(new PlayerJoinChatChannelEvent(player, this));
 		}
 
 		/*
@@ -128,7 +132,7 @@ public class StandardChannel extends Channel {
 		 * Only modify GLOBAL channelType chat (general and local chat channels) if isModifyChat() is true.
 		 */
 		if (!(exec.equals(channelTypes.GLOBAL) && !ChatSettings.isModify_chat()))  {
-			event.setFormat(Format.replace("{channelTag}", getChannelTag()).replace("{msgcolour}", getMessageColour()));
+			event.setFormat(Format.replace("{channelTag}", getChannelTag()).replace("{msgcolour}", TownyChatFormatter.hexIfCompatible(getMessageColour())));
 			LocalTownyChatEvent chatEvent = new LocalTownyChatEvent(event, resident);
 			event.setFormat(TownyChatFormatter.getChatFormat(chatEvent));
 		}
@@ -305,6 +309,7 @@ public class StandardChannel extends Channel {
 		recipients.addAll(event.getRecipients());
 		spies = checkSpying(spies);
 		String format = formatSpyMessage(type, event.getPlayer());
+		if (format == null) return;
 		
 		// Remove spies who've already seen the message naturally.
 		for (Player spy : spies)
@@ -321,12 +326,14 @@ public class StandardChannel extends Channel {
 	 * @param player - Player who chatted.
 	 * @return format - Message format.
 	 */
+	@Nullable
 	private String formatSpyMessage(channelTypes type, Player player) {
-		Resident resident = null;
+		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId());
+		if (resident == null)
+			return null;
 		Town town = null;
 		Nation nation = null;
 		try {
-			resident = TownyUniverse.getInstance().getDataSource().getResident(player.getName());
 			town = resident.getTown();
 			nation = resident.getTown().getNation();
 		} catch (NotRegisteredException e1) {
