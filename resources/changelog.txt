@@ -365,3 +365,15 @@ v0.85:
   - Bump minimum Towny version to 0.96.5.5.
   - Fix permission tests being done too early on PlayerJoin.
     - Closes https://github.com/TownyAdvanced/Towny/issues/4615
+v0.86:
+  - Fix firing PlayerJoinChatChannelEvent async.
+v0.87:
+  - Fix event firing async.
+  - Fix ranged global channels' chat being forwarded to dynmap.
+  - Fix UnsupportedOperationException which was possible when leaving a channel.
+v0.88:
+  - Fix players who've just recently joined a town/nation/alliance not being included in the town/nation/alliance chats.
+  - Fix spam_time settings not working.
+  - Fix hex color codes not being parsed in TownyChat spy messages.  
+v0.89:
+  - Update min. Towny to 0.97.0.0 and remove NotRegisteredException catches.

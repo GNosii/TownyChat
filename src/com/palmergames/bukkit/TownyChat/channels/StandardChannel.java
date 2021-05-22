@@ -11,7 +11,6 @@ import com.palmergames.bukkit.TownyChat.listener.LocalTownyChatEvent;
 import com.palmergames.bukkit.towny.Towny;
 import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.TownyMessaging;
-import com.palmergames.bukkit.towny.exceptions.NotRegisteredException;
 import com.palmergames.bukkit.towny.exceptions.TownyException;
 import com.palmergames.bukkit.towny.object.Nation;
 import com.palmergames.bukkit.towny.object.Resident;
@@ -45,25 +44,18 @@ public class StandardChannel extends Channel {
 	@Override
 	public void chatProcess(AsyncPlayerChatEvent event) {
 		
-		channelTypes exec = channelTypes.valueOf(getType().name());
-		
+		channelTypes channelType = channelTypes.valueOf(getType().name());
 		Player player = event.getPlayer();
 		Set<Player> recipients = null;
+		String format = "";
+		boolean notifyjoin = false;
+
 		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId());
 		if (resident == null)
 			return;
-		Town town = null;
-		Nation nation = null;
-		String Format = "";
+		Town town = TownyAPI.getInstance().getResidentTownOrNull(resident);
+		Nation nation = TownyAPI.getInstance().getResidentNationOrNull(resident);
 		
-		try {
-			town = resident.getTown();
-			nation = resident.getTown().getNation();
-		} catch (NotRegisteredException e1) {
-			// Not in a town/nation (doesn't matter which)
-		}
-		
-		boolean notifyjoin = false;
 		// If player sends a message to a channel it had left
 		// tell the channel to add the player back
 		if (isAbsent(player.getName())) {
@@ -76,14 +68,14 @@ public class StandardChannel extends Channel {
 		 *  Retrieve the channel specific format
 		 *  and compile a set of recipients
 		 */
-		switch (exec) {
+		switch (channelType) {
 		
 		case TOWN:
 			if (town == null) {
 				event.setCancelled(true);
 				return;
 			}
-			Format = ChatSettings.getRelevantFormatGroup(player).getTOWN();
+			format = ChatSettings.getRelevantFormatGroup(player).getTOWN();
 			recipients = new HashSet<>(findRecipients(player, TownyAPI.getInstance().getOnlinePlayers(town)));
 			break;
 		
@@ -92,7 +84,7 @@ public class StandardChannel extends Channel {
 				event.setCancelled(true);
 				return;
 			}
-			Format = ChatSettings.getRelevantFormatGroup(player).getNATION();
+			format = ChatSettings.getRelevantFormatGroup(player).getNATION();
 			recipients = new HashSet<>(findRecipients(player, TownyAPI.getInstance().getOnlinePlayers(nation)));
 			break;
 			
@@ -101,22 +93,22 @@ public class StandardChannel extends Channel {
 				event.setCancelled(true);
 				return;
 			}
-			Format = ChatSettings.getRelevantFormatGroup(player).getALLIANCE();
+			format = ChatSettings.getRelevantFormatGroup(player).getALLIANCE();
 			recipients = new HashSet<>(findRecipients(player, TownyAPI.getInstance().getOnlinePlayersAlliance(nation)));
 			break;
 			
 		case DEFAULT:
-			Format = ChatSettings.getRelevantFormatGroup(player).getDEFAULT();
+			format = ChatSettings.getRelevantFormatGroup(player).getDEFAULT();
 			recipients = new HashSet<>(findRecipients(player, new ArrayList<>(event.getRecipients())));
 			break;
 			
 		case GLOBAL:
-			Format = ChatSettings.getRelevantFormatGroup(player).getGLOBAL();
+			format = ChatSettings.getRelevantFormatGroup(player).getGLOBAL();
 			recipients = new HashSet<>(findRecipients(player, new ArrayList<>(event.getRecipients())));
 			break;
 			
 		case PRIVATE:
-			Format = ChatSettings.getRelevantFormatGroup(player).getGLOBAL();
+			format = ChatSettings.getRelevantFormatGroup(player).getGLOBAL();
 			recipients = new HashSet<>(findRecipients(player, new ArrayList<>(event.getRecipients())));
 			break;
 		}
@@ -125,14 +117,14 @@ public class StandardChannel extends Channel {
 		 * Perform all replace functions on this format
 		 */
 		if (Chat.usingPlaceholderAPI) {	    	
-            Format = PlaceholderAPI.setPlaceholders(player, Format);
+            format = PlaceholderAPI.setPlaceholders(player, format);
 	    }		
 
 		/*
 		 * Only modify GLOBAL channelType chat (general and local chat channels) if isModifyChat() is true.
 		 */
-		if (!(exec.equals(channelTypes.GLOBAL) && !ChatSettings.isModify_chat()))  {
-			event.setFormat(Format.replace("{channelTag}", getChannelTag()).replace("{msgcolour}", TownyChatFormatter.hexIfCompatible(getMessageColour())));
+		if (!(channelType.equals(channelTypes.GLOBAL) && !ChatSettings.isModify_chat()))  {
+			event.setFormat(format.replace("{channelTag}", getChannelTag()).replace("{msgcolour}", TownyChatFormatter.hexIfCompatible(getMessageColour())));
 			LocalTownyChatEvent chatEvent = new LocalTownyChatEvent(event, resident);
 			event.setFormat(TownyChatFormatter.getChatFormat(chatEvent));
 		}
@@ -154,7 +146,7 @@ public class StandardChannel extends Channel {
              * Send spy message before another plugin changes any of the recipients,
              * so we know which people can see it.
              */
-            sendSpyMessage(event, exec);
+            sendSpyMessage(event, channelType);
             
             if (hookEvent.isChanged()) {
             	event.setMessage(hookEvent.getMessage());
@@ -166,7 +158,7 @@ public class StandardChannel extends Channel {
         	/*
         	 * Send spy message.
         	 */
-        	sendSpyMessage(event, exec);
+        	sendSpyMessage(event, channelType);
         }
 
         if (notifyjoin) {
@@ -177,7 +169,7 @@ public class StandardChannel extends Channel {
          * Perform any last channel specific functions
          * like logging this chat and relaying to Dynmap.
          */
-        switch (exec) {
+        switch (channelType) {
 		
 		case TOWN:
 			break;
@@ -193,6 +185,11 @@ public class StandardChannel extends Channel {
 			
 		case PRIVATE:
 		case GLOBAL:
+			
+			// Don't broadcast local/ranged chat into dynmap.
+			if (super.getRange() > 0)
+				return;
+			
 			DynmapAPI dynMap = plugin.getDynmap();
 			
 			if (dynMap != null)
@@ -236,32 +233,38 @@ public class StandardChannel extends Channel {
 	 * Compile a list of valid recipients for this message.
 	 *
 	 * @param sender
-	 * @param list
+	 * @param playerList
 	 * @return Set containing a list of players for this message.
 	 */
 	@SuppressWarnings("deprecation")
-	private Set<Player> findRecipients(Player sender, List<Player> list) {
+	private Set<Player> findRecipients(Player sender, List<Player> playerList) {
 		
 		Set<Player> recipients = new HashSet<>();
 		boolean bEssentials = plugin.getTowny().isEssentials();
 		String sendersName = sender.getName();
-		
+		Channel channel = plugin.getChannelsHandler().getChannel(getName());
 		// Compile the list of recipients
-        for (Player test : list) {
+        for (Player player : playerList) {
+        	
+        	/*
+        	 * Refresh the potential channels a player can see, if they are not currently in the channel.
+        	 */
+        	if (!channel.isPresent(player.getName()))
+        		channel.forgetPlayer(player);
         	
         	/*
         	 * If the player has the correct permission node.
         	 */
-        	if (TownyUniverse.getInstance().getPermissionSource().has(test, getPermission())) {
+        	if (TownyUniverse.getInstance().getPermissionSource().has(player, getPermission())) {
         		
         		/*
         		 * If the player is within range for this channel.
         		 */
-	        	if (testDistance(sender, test, getRange())){
+	        	if (testDistance(sender, player, getRange())){
 	        		
 	        		if (bEssentials) {
 						try {
-							User targetUser = plugin.getTowny().getEssentials().getUser(test);
+							User targetUser = plugin.getTowny().getEssentials().getUser(player);
 							/*
 							 *  Don't send this message if the user is ignored
 							 */
@@ -275,11 +278,11 @@ public class StandardChannel extends Channel {
 	        		// Spy's can leave channels and we'll respect that
 	        		if (absentPlayers != null) {
 	        			// Ignore players who have left this channel
-	        			if (absentPlayers.containsKey(test.getName())) {
+	        			if (absentPlayers.containsKey(player.getName())) {
 	        				continue;
 	        			}
 	        		}
-	        		recipients.add(test);
+	        		recipients.add(player);
 	        	}
         	}
         }
@@ -331,15 +334,13 @@ public class StandardChannel extends Channel {
 		Resident resident = TownyUniverse.getInstance().getResident(player.getUniqueId());
 		if (resident == null)
 			return null;
-		Town town = null;
-		Nation nation = null;
-		try {
-			town = resident.getTown();
-			nation = resident.getTown().getNation();
-		} catch (NotRegisteredException e1) {
-			// Not in a town/nation (doesn't matter which)
-		}
+		Town town = TownyAPI.getInstance().getResidentTownOrNull(resident);
+		Nation nation = TownyAPI.getInstance().getResidentNationOrNull(resident);
+		
 		String format = ChatColor.translateAlternateColorCodes('&', getChannelTag());
+		if (Towny.is116Plus())
+			format = HexFormatter.translateHexColors(format);
+		
 		switch (type) {
 			case TOWN:
 				format = format + " [" + town.getName() + "] " + resident.getName();

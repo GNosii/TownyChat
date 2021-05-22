@@ -38,14 +38,12 @@ public class TownyChatPlayerListener implements Listener  {
 	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerJoin(final PlayerJoinEvent event) {
 		
-		Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> loginPlayer(event.getPlayer()), 1l);
+		Bukkit.getScheduler().runTaskLater(plugin, () -> loginPlayer(event.getPlayer()), 1l);
 
 	}
 
 	private void loginPlayer(Player player) {
-		for (Channel channel : plugin.getChannelsHandler().getAllChannels().values()) {
-			channel.forgetPlayer(player);
-		}
+		refreshPlayerChannels(player);
 
 		Channel channel = plugin.getChannelsHandler().getDefaultChannel();
 		if (channel != null &&  player.hasPermission(channel.getPermission())) {
@@ -57,11 +55,11 @@ public class TownyChatPlayerListener implements Listener  {
 
 	@EventHandler(priority = EventPriority.LOW)
 	public void onPlayerQuit(final PlayerQuitEvent event) {
-		for (Channel channel : plugin.getChannelsHandler().getAllChannels().values()) {
-			// If the channel is auto join, they will be added
-			// If the channel is not auto join, they will marked as absent
-			channel.forgetPlayer(event.getPlayer());
-		}
+		refreshPlayerChannels(event.getPlayer());
+	}
+	
+	private void refreshPlayerChannels(Player player) {
+		plugin.getChannelsHandler().getAllChannels().values().stream().forEach(channel -> channel.forgetPlayer(player));
 	}
 	
 	@EventHandler
